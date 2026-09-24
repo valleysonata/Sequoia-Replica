@@ -1,7 +1,6 @@
 
 <img width="960" height="483" alt="sexyy" src="https://github.com/user-attachments/assets/b75203e8-3ca3-488e-8b6d-a76bd63be1fa" />
 
-## Portfolio V2🍎 
 
 <div align="center">
 
