@@ -1,11 +1,12 @@
 ﻿/**
  * chat.js — chat orchestration
+ * Handles Groq API calls with auto-fallback to mock on failure.
  */
 
 (function () {
   "use strict";
 
-  const { API_ENDPOINT, MODEL, USE_MOCK_MODE } = window.PORTFOLIO_CONFIG;
+  const { API_ENDPOINT, MODEL, FALLBACK_MODEL, USE_MOCK_MODE } = window.PORTFOLIO_CONFIG;
   let chatInput;
   let activeLogId = "chat-log";
 
@@ -34,6 +35,41 @@
     return KNOWLEDGE_BASE.default;
   }
 
+  async function callGroq(messages, model) {
+    const response = await fetch(API_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        model,
+        max_tokens: 500,
+        temperature: 0.7,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const msg = data?.error?.message || `API returned ${response.status}`;
+      const code = data?.error?.code || "";
+      const err = new Error(msg);
+      err.status = response.status;
+      err.code = code;
+      err.data = data;
+      throw err;
+    }
+
+    if (Array.isArray(data)) {
+      return data[0]?.generated_text || "";
+    } else if (data.choices && data.choices[0]) {
+      return data.choices[0].message?.content || data.choices[0].generated_text || "";
+    } else if (data.error) {
+      throw new Error(data.error.message || "Unexpected API error");
+    } else {
+      throw new Error("Unexpected API response format");
+    }
+  }
+
   async function sendMessage() {
     const text = chatInput.value.trim();
     if (!text) return;
@@ -50,40 +86,40 @@
       if (USE_MOCK_MODE) {
         reply = getMockResponse(text);
       } else {
-        const response = await fetch(API_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messages: [
-              { role: "system", content: window.SYSTEM_PROMPT },
-              { role: "user", content: text },
-            ],
-            model: MODEL,
-            max_tokens: 500,
-            temperature: 0.7,
-          }),
-        });
+        const messages = [
+          { role: "system", content: window.SYSTEM_PROMPT },
+          { role: "user", content: text },
+        ];
 
-        if (!response.ok) {
-          throw new Error("API returned " + response.status);
-        }
+        try {
+          reply = await callGroq(messages, MODEL);
+        } catch (err) {
+          console.warn("[raka-agent] primary model failed:", err.message, err.code);
 
-        const data = await response.json();
+          // If primary is decommissioned / 400 / 404, try fallback model once
+          const isModelError =
+            err.code === "model_decommissioned" ||
+            err.code === "model_not_found" ||
+            err.status === 400 ||
+            err.status === 404;
 
-        if (Array.isArray(data)) {
-          reply = data[0]?.generated_text || "";
-        } else if (data.choices && data.choices[0]) {
-          reply = data.choices[0].message?.content || data.choices[0].generated_text || "";
-        } else {
-          throw new Error("Unexpected API response format");
+          if (isModelError && FALLBACK_MODEL && FALLBACK_MODEL !== MODEL) {
+            console.log(`[raka-agent] retrying with fallback ${FALLBACK_MODEL}`);
+            try {
+              reply = await callGroq(messages, FALLBACK_MODEL);
+            } catch (retryErr) {
+              console.warn("[raka-agent] fallback also failed:", retryErr.message);
+              throw retryErr;
+            }
+          } else {
+            throw err;
+          }
         }
       }
 
       document.querySelector(".typing-dot")?.remove();
 
-      reply = reply.toLowerCase().trim();
+      reply = reply.toLowerCase().trim() || getMockResponse(text);
 
       window.Messages.typeOut(contentEl, reply, function () {
         contentEl.parentElement.classList.add("done");
@@ -92,9 +128,19 @@
 
     } catch (err) {
       document.querySelector(".typing-dot")?.remove();
-      contentEl.textContent = "error: communication channel closed. retry request.";
-      console.error("[raka-agent]", err);
-      finalizeInput();
+      console.error("[raka-agent] all API attempts failed, using mock fallback:", err);
+
+      // Graceful degradation: use mock instead of hard error
+      const fallback = getMockResponse(text);
+      const isRateLimit = err.status === 429;
+      const prefix = isRateLimit
+        ? "(live ai rate-limited — showing cached answer) "
+        : "(live ai offline — showing cached answer) ";
+
+      window.Messages.typeOut(contentEl, prefix + fallback, function () {
+        contentEl.parentElement.classList.add("done");
+        finalizeInput();
+      });
     }
   }
 

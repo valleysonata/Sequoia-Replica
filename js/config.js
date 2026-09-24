@@ -1,6 +1,10 @@
 ﻿window.PORTFOLIO_CONFIG = {
   API_ENDPOINT: "https://raka-agent-proxy.raka-portfolio.workers.dev",
-  MODEL: "llama-3.3-70b-versatile",
+  // Groq deprecated llama-3.3-70b-versatile on 2026-08-16 for Free/Developer tier.
+  // Official replacements: openai/gpt-oss-120b (quality) or openai/gpt-oss-20b (speed).
+  // See https://console.groq.com/docs/models
+  MODEL: "openai/gpt-oss-120b",
+  FALLBACK_MODEL: "llama-3.1-8b-instant",
   GROQ_API_KEY: "",
   USE_MOCK_MODE: false,
   TYPEWRITER_MS: 12,
