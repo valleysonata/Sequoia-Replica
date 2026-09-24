@@ -42,24 +42,6 @@ A browser-based macOS Sequoia desktop with a working terminal, Safari browser, S
 | AI | Groq AI via Cloudflare Worker |
 | Hosting | GitHub Pages |
 
-### Local development
-
-```bash
-git clone https://github.com/valleysonata/portofolio.git
-cd portofolio
-npx serve .
-```
-
-Open [http://localhost:8000](http://localhost:8000).
-
-### Deployment
-
-Push to `main` — auto-deploys to [valleysonata.github.io/portofolio](https://valleysonata.github.io/portofolio/).
-
-### Contribute
-
-Contributions are very welcome!
-
 ### License
 
 MIT (c) 2025 Adyaraka Banyu Langit - see [LICENSE](LICENSE) for full text.
